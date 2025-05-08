@@ -46,6 +46,13 @@ public class SdlGamepadsService : IGamepadsService
         Task.Run(UpdateLoop);
     }
 
+    public ViscaDeviceBase? GetSelectedCamera()
+    {
+        return ActiveGamepads
+            .Select(gamepad => gamepad.SelectedCamera)
+            .FirstOrDefault(camera => camera != null);
+    }
+
     public void ActivateGamepad(IGamepadInfo gamepadInfo)
     {
         if (gamepadInfo is SdlGamepadInfo sdlGamepadInfo && !ActiveGamepads.Any(g => g.Id == gamepadInfo.Id))
