@@ -37,19 +37,29 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
 
     private async void NotifyClients(string? cameraName)
     {
+        Console.WriteLine($"NotifyClients called with cameraName: {cameraName}");
+
         if (cameraName != null)
         {
             try
             {
-                Console.WriteLine($"Broadcasting camera change: {cameraName}");
-                await _webSocketHandler.NotifyClientsAsync($"Selected Camera: {cameraName}");
+                var message = new WebSocketMessage
+                {
+                    Type = "event",
+                    Action = "selectedCameraChanged",
+                    Payload = new { CameraName = cameraName }
+                };
+
+                string formattedMessage = WebSocketMessageFormatter.Serialize(message);
+
+                Console.WriteLine($"Broadcasting camera change: {formattedMessage}");
+                await _webSocketHandler.NotifyClientsAsync(formattedMessage);
                 Console.WriteLine("Broadcast complete");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error broadcasting camera: {ex.Message}");
                 Console.WriteLine($"Stack trace: {ex.StackTrace}");
-
             }
         }
         else
@@ -120,6 +130,8 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
         {
             var camera = Cameras[value];
             Gamepad.SelectedCamera = camera;
+            Console.WriteLine($"Gamepad.SelectedCamera updated to: {camera.Name}");
+
             // Explicitly call NotifyClients to ensure the message is sent
             NotifyClients(camera.Name);
         }

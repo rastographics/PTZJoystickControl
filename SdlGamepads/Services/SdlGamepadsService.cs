@@ -1,4 +1,6 @@
-﻿using PtzJoystickControl.Core.Db;
+﻿using Microsoft.AspNet.SignalR.WebSockets;
+using PtzJoystickControl.Application.Services;
+using PtzJoystickControl.Core.Db;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Core.Services;
@@ -9,6 +11,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 
+
 namespace PtzJoystickControl.SdlGamepads.Services;
 
 public class SdlGamepadsService : IGamepadsService
@@ -16,16 +19,19 @@ public class SdlGamepadsService : IGamepadsService
     private readonly IGamepadSettingsStore _gamppadSettingsDb;
     private readonly ICamerasService _camerasService;
     private readonly ICommandsService _commandsService;
+    private readonly Application.Services.WebSocketHandler _webSocketHandler;
+
     public ObservableCollection<IGamepadInfo> Gamepads { get; private set; } = new();
     public ObservableCollection<IGamepad> ActiveGamepads { get; private set; } = new();
 
-    public SdlGamepadsService(IGamepadSettingsStore gamppadSettingsDb, ICamerasService camerasService, ICommandsService commandsService)
+    public SdlGamepadsService(IGamepadSettingsStore gamppadSettingsDb, ICamerasService camerasService, ICommandsService commandsService, Application.Services.WebSocketHandler webSocketHandler)
     {
         SDL.SDL_Init(SDL.SDL_INIT_JOYSTICK);
 
         _gamppadSettingsDb = gamppadSettingsDb;
         _camerasService = camerasService;
         _commandsService = commandsService;
+        _webSocketHandler = webSocketHandler; // Store the injected WebSocketHandler
 
         _gamppadSettingsDb.GetAllGamepadSettings().ForEach(x => Gamepads.Add(new SdlGamepadInfo()
         {
@@ -102,7 +108,8 @@ public class SdlGamepadsService : IGamepadsService
                 input.Inverted = storedInput.Inverted;
                 input.Saturation = storedInput.DeadZoneHigh;
                 input.DeadZone = storedInput.DeadZoneLow;
-                if(input.SecondInput != null && storedInput.SecondInputSettings != null) {
+                if (input.SecondInput != null && storedInput.SecondInputSettings != null)
+                {
                     if (storedInput.SecondInputSettings.CommandType != null && commandsDict.TryGetValue(storedInput.SecondInputSettings.CommandType, out var secondCommand))
                         input.SecondInput.SelectedCommand = secondCommand;
                     input.SecondInput.CommandDirection = storedInput.SecondInputSettings.CommandDirection;
@@ -192,9 +199,30 @@ public class SdlGamepadsService : IGamepadsService
     private void OnJoystickButtonEvent(SDL.SDL_JoyButtonEvent jbutton)
     {
         var instanceId = jbutton.which;
-        ActiveGamepads.Cast<SdlGamepad>()
-            .First(g => g.InstanceId == instanceId)
-            .OnButtonEvent(jbutton);
+        var gamepad = ActiveGamepads.Cast<SdlGamepad>()
+    .FirstOrDefault(g => g.InstanceId == instanceId);
+
+
+        if (gamepad != null)
+        {
+            gamepad.OnButtonEvent(jbutton);
+
+            //// Notify clients of the button press
+            var buttonEventMessage = new WebSocketMessage
+            {
+                Type = "event",
+                Action = "buttonPressed",
+                Payload = new
+                {
+                    GamepadId = gamepad.Id,
+                    Button = jbutton.button,
+                    State = jbutton.state // 1 for pressed, 0 for released
+                }
+            };
+
+            string formattedMessage = WebSocketMessageFormatter.Serialize(buttonEventMessage);
+            _webSocketHandler.NotifyClientsAsync(formattedMessage).Wait();
+        }
     }
 
     private void OnJoystickAdded(SDL.SDL_JoyDeviceEvent jdevice)
@@ -232,7 +260,7 @@ public class SdlGamepadsService : IGamepadsService
             return;
 
         var gamepad = (SdlGamepad?)ActiveGamepads.FirstOrDefault(g => g.Id == gamepadInfo.Id);
-        if(gamepad != null) 
+        if (gamepad != null)
         {
             DisconnectGamepad(gamepad);
             gamepad.IsConnected = false;

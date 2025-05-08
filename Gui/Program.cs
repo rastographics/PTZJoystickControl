@@ -133,7 +133,8 @@ internal class Program
         services.RegisterConstant<IGamepadsService>(new SdlGamepadsService(
             resolver.GetServiceOrThrow<IGamepadSettingsStore>(),
             resolver.GetServiceOrThrow<ICamerasService>(),
-            resolver.GetServiceOrThrow<ICommandsService>()));
+            resolver.GetServiceOrThrow<ICommandsService>(),
+            resolver.GetServiceOrThrow<WebSocketHandler>())); // Pass WebSocketHandler here
 
         services.RegisterLazySingleton(() => new GamepadsViewModel(
             resolver.GetServiceOrThrow<IGamepadsService>()));
