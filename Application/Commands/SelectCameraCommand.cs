@@ -6,25 +6,59 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Application.Devices;
+using PtzJoystickControl.Application.Services;
+
 
 namespace PtzJoystickControl.Application.Commands;
 
 public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INotifyCollectionChanged
 {
-    public SelectCameraCommand(IGamepad gamepad) : base(gamepad)
+
+    private readonly WebSocketHandler _webSocketHandler;
+
+    public SelectCameraCommand(IGamepad gamepad, WebSocketHandler webSocketHandler) : base(gamepad)
     {
+        _webSocketHandler = webSocketHandler;
         Cameras = gamepad.Cameras ?? new ObservableCollection<ViscaDeviceBase>();
         gamepad.PropertyChanged += Gamepad_PropertyChanged;
+        NotifyClients(Gamepad.SelectedCamera?.Name);
+
     }
 
     private void Gamepad_PropertyChanged(object? sender, PropertyChangedEventArgs? e)
     {
         if (e?.PropertyName == nameof(Gamepad.Cameras))
             Cameras = Gamepad.Cameras ?? new ObservableCollection<ViscaDeviceBase>();
+
+        // Add this block to handle changes to SelectedCamera
+        //if (e?.PropertyName == nameof(Gamepad.SelectedCamera))
+        //    NotifyClients(Gamepad.SelectedCamera?.Name);
     }
 
-    private static ObservableCollection<ViscaDeviceBase> cameras = null!;
+    private async void NotifyClients(string? cameraName)
+    {
+        if (cameraName != null)
+        {
+            try
+            {
+                Console.WriteLine($"Broadcasting camera change: {cameraName}");
+                await _webSocketHandler.NotifyClientsAsync($"Selected Camera: {cameraName}");
+                Console.WriteLine("Broadcast complete");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error broadcasting camera: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
 
+            }
+        }
+        else
+        {
+            Console.WriteLine("Not broadcasting - camera name is null");
+        }
+    }
+
+    private ObservableCollection<ViscaDeviceBase> cameras = null!;
     private ObservableCollection<ViscaDeviceBase> Cameras
     {
         get { return cameras; }
@@ -82,8 +116,18 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
 
     public override void Execute(int value)
     {
-        Gamepad.SelectedCamera = 0 <= value && value < Cameras.Count() ? Cameras[value] : throw new ArgumentOutOfRangeException(
-            $"Value out of range for Camera ObservableCollection. Count is {Cameras.Count()}, value was {value}");
+        if (0 <= value && value < Cameras.Count())
+        {
+            var camera = Cameras[value];
+            Gamepad.SelectedCamera = camera;
+            // Explicitly call NotifyClients to ensure the message is sent
+            NotifyClients(camera.Name);
+        }
+        else
+        {
+            throw new ArgumentOutOfRangeException(
+                $"Value out of range for Camera ObservableCollection. Count is {Cameras.Count()}, value was {value}");
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

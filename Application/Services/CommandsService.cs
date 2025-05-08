@@ -7,6 +7,12 @@ namespace PtzJoystickControl.Application.Services;
 
 public class CommandsService : ICommandsService
 {
+    private readonly WebSocketHandler _webSocketHandler;
+
+    public CommandsService(WebSocketHandler webSocketHandler)
+    {
+        _webSocketHandler = webSocketHandler;
+    }
     public IEnumerable<ICommand> GetCommandsForGamepad(IGamepad gamepad)
     {
         return new ICommand[]
@@ -19,7 +25,7 @@ public class CommandsService : ICommandsService
             new FocusLockCommand(gamepad),
             new PresetCommand(gamepad),
             new PresetRecallSpeedComamnd(gamepad),
-            new SelectCameraCommand(gamepad),
+            new SelectCameraCommand(gamepad, _webSocketHandler),
             new PowerCommand(gamepad)
         };
     }
